@@ -107,3 +107,14 @@ python test_backend.py
 python app.py
 ```
 Server runs at `http://127.0.0.1:5000`.
+
+---
+
+## Render Deployment Settings (Render.com Web Service)
+
+- **Environment**: Python
+- **Root Directory**: `backend` (Recommended)
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `gunicorn app:app --timeout 120`
+
+*(Note: `--timeout 120` ensures Gunicorn allows sufficient time on initial cold start while SentenceTransformer weights load into memory).*
