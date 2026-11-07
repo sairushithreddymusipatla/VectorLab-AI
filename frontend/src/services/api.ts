@@ -13,7 +13,35 @@ import {
   VisPoint,
 } from '../types';
 
-const API_BASE = 'http://127.0.0.1:5000/api';
+/**
+ * Dynamic API Base resolution:
+ * 1. Checks Vite environment variables: import.meta.env.VITE_API_URL or VITE_API_BASE
+ * 2. In browser production (e.g. *.workers.dev or any non-localhost domain):
+ *    Guarantees localhost is NEVER used; connects to the production Render backend over HTTPS.
+ * 3. In local development (localhost / 127.0.0.1):
+ *    Defaults to http://127.0.0.1:5000/api
+ */
+export const getApiBase = (): string => {
+  // 1. Direct Vite environment variable access (statically replaced by Vite at build time)
+  const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+
+  // 2. In browser production (Cloudflare Workers *.workers.dev or any non-localhost domain):
+  //    NEVER use localhost; default to the deployed Render backend over HTTPS.
+  if (typeof window !== 'undefined' && window.location) {
+    const host = window.location.hostname.toLowerCase();
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+    if (!isLocalhost) {
+      return 'https://vectorlab-ai.onrender.com/api';
+    }
+  }
+
+  // 3. Localhost development fallback
+  return 'http://127.0.0.1:5000/api';
+};
 
 // Cache backend health to prevent spamming
 let cachedStatus: BackendStatus = {
@@ -33,11 +61,12 @@ export async function checkBackendHealth(): Promise<BackendStatus> {
     return cachedStatus;
   }
 
+  const apiBase = getApiBase();
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout allows Render cold-start
 
-    const res = await fetch(`${API_BASE}/health`, {
+    const res = await fetch(`${apiBase}/health`, {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -73,7 +102,7 @@ export async function checkBackendHealth(): Promise<BackendStatus> {
 
 export async function generateEmbedding(text: string): Promise<{ data: EmbeddingResult; isFallback: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/embed`, {
+    const res = await fetch(`${getApiBase()}/embed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
@@ -96,7 +125,7 @@ export async function generateEmbedding(text: string): Promise<{ data: Embedding
 
 export async function compareSentences(textA: string, textB: string): Promise<{ data: ComparisonResult; isFallback: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/compare`, {
+    const res = await fetch(`${getApiBase()}/compare`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text_a: textA, text_b: textB }),
@@ -122,7 +151,7 @@ export async function searchDocuments(
   topK?: number
 ): Promise<{ data: SearchResponse; isFallback: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/search`, {
+    const res = await fetch(`${getApiBase()}/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, documents, top_k: topK }),
@@ -144,7 +173,7 @@ export async function searchDocuments(
 
 export async function get2DProjection(texts: string[]): Promise<{ points: VisPoint[]; isFallback: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/visualize`, {
+    const res = await fetch(`${getApiBase()}/visualize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts }),
